@@ -1,0 +1,975 @@
+import networkx as nx
+import plotly.graph_objs as go
+import pandas as pd
+import dash
+from dash import dcc, html
+from dash.dependencies import Input, Output
+
+excel_file = "C:\\Users\\Asus\\OneDrive\\Masaüstü\\PROLAB 3 - GÜNCEL DATASET.xlsx"
+df = pd.read_excel(excel_file)
+
+graph = {}
+graph2 = {}
+
+for orcid_str, coauthor_str, author_str, paper_str in zip(df['orcid'], df['coauthors'], df['author_name'], df['paper_title']):
+    orcid = str(orcid_str)
+    coauthor = eval(coauthor_str)
+    author = str(author_str)
+    paper = str(paper_str)
+
+    if orcid not in graph:
+        graph[orcid] = set()
+
+    if orcid not in graph2:
+        graph2[orcid] = set()
+    graph2[orcid].add(paper)
+
+    for i in range(len(coauthor)):
+        for j in range(i + 1, len(coauthor)):
+            author1 = coauthor[i]
+            author2 = coauthor[j]
+
+            if author1 == author:
+                graph[orcid].add(author2)
+                if author2 not in graph:
+                    graph[author2] = set()
+                if author2 not in graph2:
+                    graph2[author2] = set()
+                graph2[author2].add(paper)
+                graph[author2].add(orcid)
+
+            if author2 == author:
+                graph[orcid].add(author1)
+                if author1 not in graph:
+                    graph[author1] = set()
+                if author1 not in graph2:
+                    graph2[author1] = set()
+                graph2[author1].add(paper)
+                graph[author1].add(orcid)
+
+            if author2 != author and author1 != author:
+                graph[orcid].add(author1)
+                graph[orcid].add(author2)
+                if author1 not in graph2:
+                    graph2[author1] = set()
+                graph2[author1].add(paper)
+                if author2 not in graph2:
+                    graph2[author2] = set()
+                graph2[author2].add(paper)
+
+
+class BSTNode:
+    def __init__(self, author, paper_count):
+        self.author = author
+        self.paper_count = paper_count
+        self.left = None
+        self.right = None
+
+    def insert(self, author, paper_count):
+        if paper_count < self.paper_count:
+            if self.left is None:
+                self.left = BSTNode(author, paper_count)
+            else:
+                self.left.insert(author, paper_count)
+        elif paper_count > self.paper_count:
+            if self.right is None:
+                self.right = BSTNode(author, paper_count)
+            else:
+                self.right.insert(author, paper_count)
+
+def calculate_positions(node, x=0, y=0, level_distance=2, sibling_distance=1, positions=None, level=0):
+    if positions is None:
+        positions = {}
+
+    positions[node] = (x, y)
+    if node.left:
+        positions = calculate_positions(node.left, x - sibling_distance / (level + 1), y - level_distance,
+                                        level_distance, sibling_distance, positions, level + 1)
+    if node.right:
+        positions = calculate_positions(node.right, x + sibling_distance / (level + 1), y - level_distance,
+                                        level_distance, sibling_distance, positions, level + 1)
+    return positions
+
+def visualize_bst(root):
+    if not root:
+        return None
+
+    positions = calculate_positions(root)
+
+    edge_x = []
+    edge_y = []
+    for node, (x, y) in positions.items():
+        if node.left:
+            x0, y0 = x, y
+            x1, y1 = positions[node.left]
+            edge_x.extend([x0, x1, None])
+            edge_y.extend([y0, y1, None])
+        if node.right:
+            x0, y0 = x, y
+            x1, y1 = positions[node.right]
+            edge_x.extend([x0, x1, None])
+            edge_y.extend([y0, y1, None])
+
+    trace_edges = go.Scatter(
+        x=edge_x, y=edge_y,
+        mode='lines',
+        line=dict(color='gray', width=1),
+        hoverinfo='none'
+    )
+
+    node_x = []
+    node_y = []
+    node_text = []
+    for node, (x, y) in positions.items():
+        node_x.append(x)
+        node_y.append(y)
+        node_text.append(f"Yazar: {node.author}, Makale Sayısı: {node.paper_count}")
+
+    trace_nodes = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers+text',
+        text=node_text,
+        textposition="top center",
+        marker=dict(
+            size=20,
+            color='blue',
+            line=dict(width=2, color='black')
+        ),
+        hoverinfo='text'
+    )
+
+    layout = go.Layout(
+        title="Binary Search Tree Görselleştirme",
+        showlegend=False,
+        xaxis=dict(showgrid=False, zeroline=False, visible=False),
+        yaxis=dict(showgrid=False, zeroline=False, visible=False),
+        margin=dict(l=0, r=0, t=40, b=0)
+    )
+
+    return go.Figure(data=[trace_edges, trace_nodes], layout=layout)
+
+G = nx.Graph()
+
+for node, neighbors in graph.items():
+    for neighbor in neighbors:
+        G.add_edge(node, neighbor)
+
+app = dash.Dash(__name__)
+
+app.layout = html.Div([
+    html.H1("Ağırlıklı Yazarlar Ağı"),
+    dcc.Graph(id='graph', config={'scrollZoom': True}),
+    html.Div(id='node-info', style={'marginTop': '20px'}),
+
+
+    html.Div([
+        html.Button('1. İster', id='btn-1', n_clicks=0),
+        html.Button('2. İster', id='btn-2', n_clicks=0),
+        html.Button('3. İster', id='btn-3', n_clicks=0),
+        html.Button('4. İster', id='btn-4', n_clicks=0),
+        html.Button('5. İster', id='btn-5', n_clicks=0),
+        html.Button('6. İster', id='btn-6', n_clicks=0),
+        html.Button('7. İster', id='btn-7', n_clicks=0),
+    ], style={'width': '20%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginLeft': '5%'}),
+
+    dcc.Store(id='store-most-collaborative-author', data=''),
+    dcc.Store(id='store-last-clicked', data=None),
+
+    dcc.Graph(id='bst-graph', style={'display': 'none','marginTop': '20px'}),
+
+    html.Div(id='content-1', style={'display': 'none', 'marginTop': '20px'}),
+
+    html.Div(id='content-2', style={'display': 'none', 'marginTop': '20px'}),
+
+    html.Div(id='content-3', style={'display': 'none', 'marginTop': '20px'}),
+
+    html.Div(id='content-4', style={'display': 'none', 'marginTop': '20px'}),
+
+    html.Div(id='content-5', style={'display': 'none', 'marginTop': '20px'}),
+
+    html.Div(id='content-6', style={'display': 'none', 'marginTop': '20px'}),
+
+    html.Div(id='content-7', style={'display': 'none', 'marginTop': '20px'}),
+
+    html.Div(id='id-1', children=[
+        html.Label("Yazar ID'si:"),
+        dcc.Input(id='input-id-1-1', type='text', placeholder='1. Yazar ID girin...'),
+        dcc.Input(id='input-id-1-2', type='text', placeholder='2. Yazar ID girin...'),
+    ], style={'width': '50%', 'display': 'inline-block', 'marginTop': '20px', 'display': 'none'}),
+
+    html.Div(id='id-2', children=[
+        html.Label("Yazar ID'si:"),
+        dcc.Input(id='input-id-2', type='text', placeholder='Yazar ID girin...')
+    ], style={'width': '50%', 'display': 'inline-block', 'marginTop': '20px', 'display': 'none'}),
+
+    html.Div(id='id-3', children=[
+        html.Label("Yazar ID'si:"),
+        dcc.Input(id='input-id-3', type='text', placeholder='Yazar ID girin...')
+    ], style={'width': '50%', 'display': 'inline-block', 'marginTop': '20px', 'display': 'none'}),
+
+    html.Div(id='id-4', children=[
+        html.Label("Yazar ID'si:"),
+        dcc.Input(id='input-id-4', type='text', placeholder='Yazar ID girin...')
+    ], style={'width': '50%', 'display': 'inline-block', 'marginTop': '20px', 'display': 'none'}),
+
+    html.Div(id='author-id-div', children=[
+        html.Label("Yazar ID'si:"),
+        dcc.Input(id='input-author-id', type='text', placeholder='Yazar ID girin...')
+    ], style={'width': '50%', 'display': 'inline-block', 'marginTop': '20px', 'display': 'none'}),
+
+    html.Div(id='id-7', children=[
+        html.Label("Yazar ID'si:"),
+        dcc.Input(id='input-id-7', type='text', placeholder='Yazar ID girin...')
+    ], style={'width': '50%', 'display': 'inline-block', 'marginTop': '20px', 'display': 'none'}),
+
+    dcc.Store(id='store-btn-1', data=0),
+    dcc.Store(id='store-btn-2', data=0),
+    dcc.Store(id='store-btn-3', data=0),
+    dcc.Store(id='store-btn-4', data=0),
+    dcc.Store(id='store-btn-5', data=0),
+    dcc.Store(id='store-btn-6', data=0),
+    dcc.Store(id='store-btn-7', data=0),
+    dcc.Store(id='store-list', data=0)
+])
+
+pos = nx.spring_layout(G, k=0.15, iterations=30)
+
+@app.callback(
+    Output('store-last-clicked', 'data'),
+    [
+     Input('btn-1', 'n_clicks'),
+     Input('btn-2', 'n_clicks'),
+     Input('btn-3', 'n_clicks'),
+     Input('btn-4', 'n_clicks'),
+     Input('btn-5', 'n_clicks'),
+     Input('btn-6', 'n_clicks'),
+     Input('btn-7', 'n_clicks')]
+)
+def update_last_clicked(n1,n2, n3,n4,n5, n6,n7):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return dash.no_update
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    return triggered_id
+
+@app.callback(
+    [Output('graph', 'figure'), Output('node-info', 'children')],
+    [Input('graph', 'clickData'),
+     Input('store-most-collaborative-author', 'data'),
+     Input('input-author-id', 'value'),
+     Input('input-id-2', 'value'),
+     Input('input-id-4', 'value'),
+     Input('input-id-7', 'value'),
+     Input('store-last-clicked', 'data'),
+     Input('store-list', 'data')]
+)
+def update_graph(clickData, most_collaborative_author, author_id, author_id_2,author_id_4 ,author_id_7,last_clicked,store_list):
+
+    edge_x = []
+    edge_y = []
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
+
+    trace_edges = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=0.5, color='#888'),
+        hoverinfo='none',
+        mode='lines'
+    )
+
+    node_x = []
+    node_y = []
+    node_text = []
+    node_sizes = []
+    node_colors = []
+
+    highlight_author = None
+    highlight_author_2 = None
+    highlight_collaborators = set()
+    highlight_collaborators1 = set()
+    highlight_collaborators2 = set()
+
+    gecici_list=[]
+
+    if last_clicked=='btn-1' and store_list:
+        if store_list[0] in graph:
+            highlight_author = store_list[0]
+            for i in range(1,len(store_list)-1):
+                gecici_list.append(store_list[i])
+            highlight_collaborators=set(gecici_list)
+            highlight_author_2 = store_list[len(store_list)-1]
+        else:
+            highlight_author=None
+
+
+    elif last_clicked == 'btn-2' and author_id_2:
+        if author_id_2 in graph:
+            highlight_author = author_id_2
+            highlight_collaborators = set(G.neighbors(author_id_2))
+        else:
+            highlight_author = None
+
+    elif last_clicked == 'btn-4' and author_id_4:
+        if author_id_4 in graph:
+            highlight_author_2 = author_id_4
+            highlight_collaborators1 = set(G.neighbors(author_id_4))
+            for neighbor in G.neighbors(author_id_4):
+                highlight_collaborators2=set(G.neighbors(neighbor))
+        else:
+            highlight_author_2 = None
+            highlight_collaborators2=None
+            highlight_collaborators1 = None
+
+    elif last_clicked == 'btn-5' and author_id:
+        if author_id in graph:
+            highlight_author = author_id
+            highlight_collaborators = set(G.neighbors(author_id))
+        else:
+            highlight_author = None
+
+    elif last_clicked == 'btn-6' and most_collaborative_author:
+        if most_collaborative_author in graph:
+            highlight_author = most_collaborative_author
+            highlight_collaborators = set(G.neighbors(most_collaborative_author))
+
+    elif last_clicked == 'btn-7' and author_id_7:
+        if author_id_7 in graph:
+            highlight_author = author_id_7
+
+            author_id_7 = author_id_7.strip()
+            author = str(author_id_7)
+
+            list1 = []
+            list2 = []
+            list3 = []
+            visited = set()
+
+            def fonk1(komsu, list1, author, list2):
+                # print(len(graph[komsu]))
+                visited.add(komsu)
+                if len(graph[komsu]) == 1:
+                    list2.append(list1)
+                    return
+                else:
+                    for komsu2 in graph[komsu]:
+                        if str(komsu2) != author and komsu2 not in visited:
+                            list1.append(komsu2)
+                            new_list = list1.copy()
+                            if len(graph[komsu2]) == 1:
+                                # print(list1)
+                                list2.append(new_list)
+                                list1.remove(komsu2)
+                                continue
+                            else:
+                                fonk1(komsu2, list1, author, list2)
+
+            for komsu in graph[author]:
+                list1.append(author)
+                list1.append(komsu)
+                fonk1(komsu, list1, author_id, list2)
+                list1 = []
+
+            list3 = max(list2, key=len).copy()
+
+            highlight_collaborators=set(list3)
+
+
+
+    for node in G.nodes():
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+        node_text.append(f"Yazar: {node}\nMakaleler: {len(graph2.get(node, []))}")
+
+        node_size = min(len(graph2.get(node, [])) * 5, 50)
+        node_sizes.append(node_size)
+
+        if node == highlight_author:
+            node_colors.append('red')
+        elif node == highlight_author_2:
+            node_colors.append('purple')
+        elif node in highlight_collaborators:
+            node_colors.append('orange')
+        elif node in highlight_collaborators1:
+            node_colors.append('red')
+        elif node in highlight_collaborators2:
+            node_colors.append('orange')
+        else:
+            node_colors.append(len(graph2.get(node, [])))
+
+    trace_nodes = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers',
+        hoverinfo='text',
+        marker=dict(
+            showscale=True,
+            colorscale='YlGnBu',
+            size=node_sizes,
+            color=node_colors,
+            colorbar=dict(thickness=15, title='Makaleler', xanchor='left', titleside='right')
+        ),
+        text=node_text
+    )
+
+    layout = go.Layout(
+        title='Yazarlar Ağı',
+        showlegend=False,
+        hovermode='closest',
+        xaxis=dict(showgrid=False, zeroline=False, visible=False),
+        yaxis=dict(showgrid=False, zeroline=False, visible=False),
+        margin=dict(l=0, r=0, t=40, b=0),
+        plot_bgcolor='rgb(255,255,255)'
+    )
+
+    figure = {'data': [trace_edges, trace_nodes], 'layout': layout}
+
+    if clickData:
+        node_clicked = clickData['points'][0]['text'].split('\n')[0].split(": ")[1]
+        paper_list = graph2.get(node_clicked, [])
+        paper_count = len(paper_list)
+
+        paper_titles_html = html.Ul([html.Li(paper) for paper in paper_list])
+
+        node_info = html.Div([
+            html.H4(f"Yazar: {node_clicked}"),
+            html.P(f"Makaleler: {paper_count}"),
+            html.H5("Makale Listesi:"),
+            paper_titles_html
+        ])
+    else:
+        node_info = html.Div("Bir düğüme tıklayın.")
+
+    return figure, node_info
+
+
+@app.callback(
+    [
+        Output('content-1', 'style'),
+        Output('content-1', 'children'),
+
+        Output('content-2', 'style'),
+        Output('content-2', 'children'),
+
+        Output('content-3', 'style'),
+        Output('content-3', 'children'),
+
+        Output('content-4', 'style'),
+        Output('content-4', 'children'),
+
+        Output('content-5', 'style'),
+        Output('content-5', 'children'),
+
+        Output('content-6', 'style'),
+
+        Output('content-7', 'style'),
+        Output('content-7', 'children'),
+
+        Output('author-id-div', 'style'),
+        Output('id-1', 'style'),
+        Output('id-2', 'style'),
+        Output('id-3', 'style'),
+        Output('id-4', 'style'),
+        Output('id-7', 'style'),
+        Output('store-btn-1', 'data'),
+        Output('store-btn-2', 'data'),
+        Output('store-btn-3', 'data'),
+        Output('store-btn-4', 'data'),
+        Output('store-btn-5', 'data'),
+        Output('store-btn-6', 'data'),
+        Output('store-btn-7', 'data'),
+        Output('store-most-collaborative-author', 'data'),
+        Output('store-list', 'data'),
+
+        Output('bst-graph', 'figure'),
+        Output('bst-graph', 'style'),
+    ],
+    [
+        Input('btn-1', 'n_clicks'),
+        Input('btn-2', 'n_clicks'),
+        Input('btn-3', 'n_clicks'),
+        Input('btn-4', 'n_clicks'),
+        Input('btn-5', 'n_clicks'),
+        Input('btn-6', 'n_clicks'),
+        Input('btn-7', 'n_clicks'),
+        Input('input-id-1-1', 'value'),
+        Input('input-id-1-2', 'value'),
+        Input('input-author-id', 'value'),
+        Input('input-id-2', 'value'),
+        Input('input-id-3', 'value'),
+        Input('input-id-4', 'value'),
+        Input('input-id-7', 'value'),
+    ],
+    [
+        Input('store-btn-1', 'data'),
+        Input('store-btn-2', 'data'),
+        Input('store-btn-3', 'data'),
+        Input('store-btn-4', 'data'),
+        Input('store-btn-5', 'data'),
+        Input('store-btn-6', 'data'),
+        Input('store-btn-7', 'data'),
+        Input('store-list', 'data'),
+    ]
+)
+def show_content(n_clicks_1,n_clicks_2,n_clicks_3,n_clicks_4,n_clicks_5, n_clicks_6, n_clicks_7,author_id_1_1,author_id_1_2,author_id, author_id_2 , author_id_3,author_id_4,author_id_7 , store_btn_1 ,store_btn_2 ,store_btn_3,store_btn_4,store_btn_5, store_btn_6,store_btn_7,store_list):
+    style_visible = {'display': 'block', 'border': '1px solid black', 'padding': '10px', 'backgroundColor': '#f9f9f9'}
+    style_hidden = {'display': 'none'}
+
+    if n_clicks_1>store_btn_1:
+        store_btn_1=n_clicks_1
+        content_style_1 = style_visible
+        content_style_7 = style_hidden
+        content_style_3 = style_hidden
+        content_style_4 = style_hidden
+        content_style_2 = style_hidden
+        content_style_6 = style_hidden
+        content_style_5 = style_hidden
+
+        if (not author_id_1_1 or not author_id_1_2) or (author_id_1_1.strip() == "" or author_id_1_2.strip() == ""):
+            return (content_style_1, "Lütfen geçerli bir Yazar ID girin.", content_style_2, "",content_style_3, "",content_style_4, "", content_style_5, "", content_style_6,
+                    content_style_7, "", {'display': 'none'}, {'display': 'block'},{'display': 'none'},{'display': 'none'},{'display': 'none'},
+                    {'display': 'none'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4 ,store_btn_5, store_btn_6, store_btn_7, store_btn_6,"",go.Figure(),style_hidden)
+
+
+        # author_id_7 = author_id_7.strip()
+        author1 = str(author_id_1_1)
+
+        if author_id_1_1 not in graph:
+            return (content_style_1, f"{author1} anahtarı sözlükte bulunamadı.", content_style_2, "",content_style_3, "",content_style_4, "", content_style_5, "", content_style_6,
+                    content_style_7, "" , {'display': 'none'},{'display': 'block'},
+                    {'display': 'none'}, {'display': 'none'},{'display': 'none'},{'display': 'none'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4, store_btn_5, store_btn_6, store_btn_7, store_btn_6,"",go.Figure(),style_hidden)
+
+        author2 = str(author_id_1_2)
+
+        if author2 not in graph:
+            return (content_style_1, f"{author2} anahtarı sözlükte bulunamadı.", content_style_2, "",content_style_3, "",content_style_4, "", content_style_5, "", content_style_6,
+                    content_style_7, "" , {'display': 'none'},{'display': 'block'},
+                    {'display': 'none'}, {'display': 'none'},{'display': 'none'},{'display': 'none'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4, store_btn_5, store_btn_6, store_btn_7, store_btn_6,"",go.Figure(),style_hidden)
+
+
+
+
+        list1 = []
+        list2 = []
+        list3 = []
+        visited = set()
+
+        def fonk1(komsu, list1, author1, list2):
+            # print(len(graph[komsu]))
+            visited.add(komsu)
+            if len(graph[komsu]) == 1:
+                list2.append(list1)
+                return
+            else:
+                for komsu2 in graph[komsu]:
+                    if str(komsu2) != author1 and komsu2 not in visited:
+                        list1.append(komsu2)
+                        new_list = list1.copy()
+                        if len(graph[komsu2]) == 1:
+                            # print(list1)
+                            list2.append(new_list)
+                            list1.remove(komsu2)
+                            continue
+                        else:
+                            fonk1(komsu2, list1, author1, list2)
+
+        for komsu in graph[author1]:
+            list1.append(author1)
+            list1.append(komsu)
+            fonk1(komsu, list1, author1, list2)
+            list1 = []
+
+        list3 = max(list2, key=len).copy()
+        aciklama=[]
+        list4 = []
+        list5 = []
+        a=0
+        for i in range(0, len(list2)):
+            for j in range(0, len(list2[i])):
+                if author2 == list2[i][j]:
+                    for k in range(0, j + 1):
+                        list5.append(list2[i][k])
+                    if list5 not in list4:
+                        list4.append(list5)
+                    list5 = []
+                    a = a + 1
+
+        if a == 0:
+            aciklama="İki yazar arasında bağlantı bulunamadı"
+
+        def fonk(graph2, yazar1, yazar2):
+
+            makaleler1 = graph2.get(yazar1, set())
+            makaleler2 = graph2.get(yazar2, set())
+
+            ortak_makaleler = makaleler1 & makaleler2
+
+            return len(ortak_makaleler)
+
+        def yol_agirligini_hesapla(graph2, yol):
+            toplam_agirlik = 0
+            for i in range(len(yol) - 1):
+                yazar1 = yol[i]
+                yazar2 = yol[i + 1]
+                toplam_agirlik += fonk(graph2, yazar1, yazar2)
+            return toplam_agirlik
+
+        if len(list4)>=1:
+
+            list4_agirlikli = []
+
+            for yol in list4:
+                agirlik = yol_agirligini_hesapla(graph2, yol)
+                list4_agirlikli.append((yol, agirlik))
+
+
+            list2_agirlikli = sorted(list4_agirlikli, key=lambda x: x[1],reverse=True)
+
+            sirali_list4 = [yol for yol, agirlik in list2_agirlikli]
+            liste = sirali_list4[0] if sirali_list4 else []
+
+        if len(list4)==1:
+            aciklama="iki yazar arasında 1 bağlantı var"
+
+       # if len(list4)>=1:
+        #    liste = list4[0]
+         #   store_list = liste
+        liste = list4[0] if list4 else []
+        store_list = liste
+
+
+        return (content_style_1, "{0},{1}".format(aciklama,liste), content_style_2, "",content_style_3, "",content_style_4, "", content_style_5, "", content_style_6,
+                    content_style_7, "" , {'display': 'none'},{'display': 'block'},
+                    {'display': 'none'}, {'display': 'none'},{'display': 'none'},{'display': 'none'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4, store_btn_5, store_btn_6, store_btn_7, store_btn_6,store_list,go.Figure(),style_hidden)
+
+    if n_clicks_2 > store_btn_2:
+        store_btn_2 = n_clicks_2
+        content_style_1 = style_hidden
+        content_style_2 = style_visible
+        content_style_5 = style_hidden
+        content_style_4 = style_hidden
+        content_style_3 = style_hidden
+        content_style_6 = style_hidden
+        content_style_7 = style_hidden
+
+        if not author_id_2 or author_id_2.strip() == "":
+            return (content_style_1,"",content_style_2,"Lütfen geçerli bir Yazar ID girin.",content_style_3, "",content_style_4, "",content_style_5,"",content_style_6,content_style_7,"",
+                    {'display': 'none'},{'display': 'none'},{'display': 'block'}, {'display': 'none'},{'display': 'none'},{'display': 'none'} ,
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4,store_btn_5,store_btn_6,store_btn_7,store_btn_6,"",go.Figure(),style_hidden)
+
+        author = str(author_id_2)
+        if author not in graph:
+            return (content_style_1,"",content_style_2,f"{author} anahtarı sözlükte bulunamadı.",content_style_3, "",content_style_4, "",content_style_5,"",content_style_6,content_style_7,"",
+                    {'display': 'none'},{'display': 'none'},{'display': 'block'},{'display': 'none'},{'display': 'none'},{'display': 'none'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4,store_btn_5,store_btn_6,store_btn_7,store_btn_6,"",go.Figure(),style_hidden)
+
+
+        list1 = []
+        sayi = []
+        #print(graph[author])
+
+        for neighbor in graph[author]:
+            #print("{0} : {1}".format(neighbor, len(graph2[str(neighbor)])))
+            list1.append(str(neighbor))
+
+        # bubble sort yapıyoruz
+        for i in range(0, len(list1)):
+            for j in range(0, len(list1) - 1):
+                if len(graph2[str(list1[j])]) < len(graph2[str(list1[j + 1])]):
+                    gecici = list1[j]
+                    list1[j] = list1[j + 1]
+                    list1[j + 1] = gecici
+
+        return (content_style_1,"",content_style_2, ', '.join(list1),content_style_3, "",content_style_4, "",content_style_5, "" ,content_style_6,content_style_7,
+                "",{'display': 'none'},{'display': 'none'},{'display': 'block'},{'display': 'none'},{'display': 'none'},{'display': 'none'}
+                ,store_btn_1,store_btn_2,store_btn_3,store_btn_4,store_btn_5,store_btn_6,store_btn_7,store_btn_6,"",go.Figure(),style_hidden)
+            #', '.join(list))  # Listeyi string olarak döndür
+
+    if n_clicks_3 > store_btn_3:
+        store_btn_3=n_clicks_3
+        content_style_1 = style_hidden
+        content_style_5 = style_hidden
+        content_style_2 = style_hidden
+        content_style_4 = style_hidden
+        content_style_3 = style_visible
+        content_style_6 = style_hidden
+        content_style_7 = style_hidden
+
+        bst_figure = go.Figure()
+        bst_style = style_hidden
+
+        if len(store_list)>=1:
+            if store_list[0] in graph:
+                collaborators = []
+                for i in range(1,len(store_list)):
+                    collaborators.append(store_list[i])
+                paper_count = len(graph2.get(store_list[0], []))
+                root = BSTNode(store_list[0], paper_count)
+                for collaborator in collaborators:
+                    paper_count = len(graph2.get(collaborator, []))
+                    if root is None:
+                        root = BSTNode(collaborator, paper_count)
+                    else:
+                        root.insert(collaborator, paper_count)
+
+                bst_figure = visualize_bst(root)
+                bst_style = style_visible
+            else:
+                bst_figure = go.Figure()
+                bst_style = style_hidden
+
+        #author_3=author_id_3.strip()
+
+        if not author_id_3:
+            return (content_style_1,"",content_style_2,"",content_style_3, "Lütfen bir yazar ID'si girin.",content_style_4, "",content_style_5, "", content_style_6,content_style_7,
+                    "", {'display': 'none'},{'display': 'none'} ,{'display': 'none'},{'display': 'block'},{'display': 'none'},{'display': 'none'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4,store_btn_5, store_btn_6, store_btn_7,store_btn_6,"",bst_figure,bst_style)
+        if author_id_3 not in store_list:
+            return (content_style_1,"",content_style_2,"",content_style_3, f"{author_id_3} ID'li yazar kuyrukta yok.",content_style_4, "",content_style_5, "",
+                    content_style_6, content_style_7,"",{'display': 'none'} ,{'display': 'none'},{'display': 'none'} ,{'display': 'block'},{'display': 'none'},{'display': 'none'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4, store_btn_5, store_btn_6, store_btn_7,store_btn_6,"",bst_figure,bst_style)
+
+        if len(store_list)>=1:
+            if store_list[0] in graph:
+                collaborators = []
+                if author_id_3 in store_list:
+                    store_list.remove(author_id_3)
+                for i in range(1,len(store_list)):
+                    collaborators.append(store_list[i])
+                paper_count = len(graph2.get(store_list[0], []))
+                root = BSTNode(store_list[0], paper_count)
+                for collaborator in collaborators:
+                    paper_count = len(graph2.get(collaborator, []))
+                    if root is None:
+                        root = BSTNode(collaborator, paper_count)
+                    else:
+                        root.insert(collaborator, paper_count)
+
+                bst_figure = visualize_bst(root)
+                bst_style = style_visible
+            else:
+                bst_figure = go.Figure()
+                bst_style = style_hidden
+
+            return (content_style_1, "", content_style_2, "", content_style_3, f"{author_id_3} ID'li yazar çıkartılmış binary search tree.",content_style_4, "",
+                    content_style_5, "",
+                    content_style_6, content_style_7, "", {'display': 'none'}, {'display': 'none'},
+                    {'display': 'none'}, {'display': 'block'},{'display': 'none'},{'display': 'none'},
+                    store_btn_1, store_btn_2, store_btn_3,store_btn_4, store_btn_5, store_btn_6, store_btn_7, store_btn_6, "",
+                    bst_figure, bst_style)
+
+
+    def yazdir(list2):
+        result = ""
+        for sublist in list2:
+            result += ", ".join(sublist) + "<br>"
+        return html.Div([
+        html.Div(", ".join(sublist)) for sublist in list2
+    ])
+
+    if n_clicks_4>store_btn_4:
+        store_btn_4=n_clicks_4
+        content_style_1 = style_hidden
+        content_style_5 = style_hidden
+        content_style_2 = style_hidden
+        content_style_3 = style_hidden
+        content_style_4 = style_visible
+        content_style_6 = style_hidden
+        content_style_7 = style_hidden
+        if not author_id_4:
+            return (content_style_1,"",content_style_2,"",content_style_3, "",content_style_4, "Lütfen bir yazar ID'si girin.",content_style_5, "", content_style_6,content_style_7,
+                    "", {'display': 'none'},{'display': 'none'} ,{'display': 'none'},{'display': 'none'},{'display': 'block'},{'display': 'none'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4,store_btn_5, store_btn_6, store_btn_7,store_btn_6,"",go.Figure(),style_hidden)
+
+        author_4 = author_id_4.strip()
+
+        if author_4 not in graph:
+            return (content_style_1,"",content_style_2,"",content_style_3, "",content_style_4,f"{author_4} ID'li yazar bulunamadı. Geçerli bir yazar ID'si girin.",content_style_5, "",
+                    content_style_6, content_style_7,"",{'display': 'none'} ,{'display': 'none'},{'display': 'none'} ,{'display': 'none'},{'display': 'block'},{'display': 'none'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4, store_btn_5, store_btn_6, store_btn_7,store_btn_6,"",go.Figure(),style_hidden)
+
+
+        list1=[]
+        list2 = []
+        list3 = []
+        list4 = []
+        for neighbor in graph[author_4]:
+            list1.append(author_4)
+            list1.append(neighbor)
+            list2.append(list1)
+            list1=[]
+
+        for neighbor in graph[author_4]:
+            list1.append(author_4)
+            list1.append(neighbor)
+            for neighbor2 in graph[neighbor]:
+                list1.append(neighbor2)
+                list2.append(list1)
+            list1=[]
+
+        def fonk(graph2, yazar1, yazar2):
+
+            makaleler1 = graph2.get(yazar1, set())
+            makaleler2 = graph2.get(yazar2, set())
+
+            ortak_makaleler = makaleler1 & makaleler2
+
+            return len(ortak_makaleler)
+
+        def yol_agirligini_hesapla(graph2, yol):
+            toplam_agirlik = 0
+            for i in range(len(yol) - 1):
+                yazar1 = yol[i]
+                yazar2 = yol[i + 1]
+                toplam_agirlik += fonk(graph2, yazar1, yazar2)
+            return toplam_agirlik
+
+        list2_agirlikli = []
+
+        for yol in list2:
+            agirlik = yol_agirligini_hesapla(graph2, yol)
+            list2_agirlikli.append((yol, agirlik))
+
+        list2 = list(set(map(tuple, list2)))
+        list2 = [list(item) for item in list2]
+
+        list2_agirlikli = [(yol, yol_agirligini_hesapla(graph2, yol)) for yol in list2]
+        list2_agirlikli = sorted(list2_agirlikli, key=lambda x: x[1])
+
+        sirali_list2 = [yol for yol, agirlik in list2_agirlikli]
+
+        #sirali_list2=list2_agirlikli[0]
+
+        return (content_style_1, "", content_style_2, "", content_style_3, "", content_style_4,
+                yazdir(sirali_list2), content_style_5, "",
+                content_style_6, content_style_7, "", {'display': 'none'}, {'display': 'none'}, {'display': 'none'},
+                {'display': 'none'}, {'display': 'block'}, {'display': 'none'},
+                store_btn_1, store_btn_2, store_btn_3, store_btn_4, store_btn_5, store_btn_6, store_btn_7, store_btn_6,
+                "", go.Figure(), style_hidden)
+
+
+    if n_clicks_5 > store_btn_5:
+        store_btn_5 = n_clicks_5
+        content_style_1 = style_hidden
+        content_style_5 = style_visible
+        content_style_2 = style_hidden
+        content_style_3 = style_hidden
+        content_style_4 = style_hidden
+        content_style_6 = style_hidden
+        content_style_7 = style_hidden
+        if not author_id:
+            return (content_style_1,"",content_style_2,"",content_style_3, "",content_style_4, "",content_style_5, "Lütfen bir yazar ID'si girin.", content_style_6,content_style_7,
+                    "", {'display': 'block'},{'display': 'none'} ,{'display': 'none'},{'display': 'none'},{'display': 'none'},{'display': 'none'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4,store_btn_5, store_btn_6, store_btn_7,store_btn_6,"",go.Figure(),style_hidden)
+
+        author_id = author_id.strip()
+
+        if author_id not in graph:
+            return (content_style_1,"",content_style_2,"",content_style_3, "",content_style_4, "",content_style_5, f"{author_id} ID'li yazar bulunamadı. Geçerli bir yazar ID'si girin.",
+                    content_style_6, content_style_7,"",{'display': 'block'} ,{'display': 'none'},{'display': 'none'} ,{'display': 'none'},{'display': 'none'},{'display': 'none'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4, store_btn_5, store_btn_6, store_btn_7,store_btn_6,"",go.Figure(),style_hidden)
+
+        collaborator_count = len(graph[author_id])
+
+        if collaborator_count == 0:
+            return (content_style_1,"",content_style_2,"",content_style_3, "",content_style_4, "",content_style_5, f"{author_id} ID'li yazarın işbirliği yaptığı hiç yazar bulunmamaktadır.",
+                    content_style_6 , content_style_7,"",{'display': 'block'},{'display': 'none'} ,{'display': 'none'},{'display': 'none'},{'display': 'none'},{'display': 'none'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4, store_btn_5, store_btn_6, store_btn_7,store_btn_6,"",go.Figure(),style_hidden)
+
+        return (content_style_1,"",content_style_2,"",content_style_3, "",content_style_4, "",content_style_5, f"{author_id} ID'li yazarın işbirliği yaptığı toplam {collaborator_count} yazar var.",
+                content_style_6, content_style_7,"",{'display': 'block'}, {'display': 'none'} ,{'display': 'none'},{'display': 'none'},{'display': 'none'},{'display': 'none'},
+                store_btn_1,store_btn_2,store_btn_3,store_btn_4,store_btn_5, store_btn_6, store_btn_7,store_btn_6,"",go.Figure(),style_hidden)
+
+    if n_clicks_6 > store_btn_6:
+        store_btn_6 = n_clicks_6
+        content_style_1 = style_hidden
+        content_style_5 = style_visible
+        content_style_2 = style_hidden
+        content_style_3 = style_hidden
+        content_style_6 = style_hidden
+        content_style_4 = style_hidden
+        content_style_7 = style_hidden
+
+        max_collaborations = 0
+        most_collaborative_author = None
+
+        for author, neighbors in graph.items():
+            collaborations = len(neighbors)
+            if collaborations > max_collaborations:
+                max_collaborations = collaborations
+                most_collaborative_author = author
+
+        return (content_style_1,"",content_style_2,"",content_style_3, "",content_style_4, "",content_style_5, f"En çok işbirliği yapan yazar: {most_collaborative_author} ({max_collaborations} işbirliği)",
+                content_style_6,content_style_7,"", {'display': 'none'}, {'display': 'none'},{'display': 'none'},{'display': 'none'},{'display': 'none'}, {'display': 'none'},
+                store_btn_1,store_btn_2,store_btn_3,store_btn_4,store_btn_5, store_btn_6, store_btn_7,most_collaborative_author,"",go.Figure(),style_hidden)
+
+    if n_clicks_7 > store_btn_7:
+        store_btn_7 = n_clicks_7
+        content_style_1 = style_hidden
+        content_style_7 = style_visible
+        content_style_2 = style_hidden
+        content_style_3 = style_hidden
+        content_style_6 = style_hidden
+        content_style_4 = style_hidden
+        content_style_5 = style_hidden
+
+        if not author_id_7 or author_id_7.strip() == "":
+            return (content_style_1,"",content_style_2, "",content_style_3, "",content_style_4, "", content_style_5, "", content_style_6,
+                    content_style_7, "Lütfen geçerli bir Yazar ID girin.", {'display': 'none'}, {'display': 'none'},{'display': 'none'}, {'display': 'none'},{'display': 'none'},{'display': 'block'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4, store_btn_5, store_btn_6, store_btn_7, store_btn_6,"",go.Figure(),style_hidden)
+
+        #author_id_7 = author_id_7.strip()
+        author = str(author_id_7)
+
+        if author_id_7 not in graph:
+            return (content_style_1,"",content_style_2, "",content_style_3, "",content_style_4, "", content_style_5, "", content_style_6,
+                    content_style_7, f"{author} anahtarı sözlükte bulunamadı.", {'display': 'none'},{'display': 'none'}, {'display': 'none'}, {'display': 'none'},{'display': 'none'},{'display': 'block'},
+                    store_btn_1,store_btn_2,store_btn_3,store_btn_4, store_btn_5, store_btn_6, store_btn_7, store_btn_6,"",go.Figure(),style_hidden)
+
+        list1 = []
+        list2 = []
+        list3 = []
+        visited = set()
+
+        def fonk1(komsu, list1, author, list2):
+            # print(len(graph[komsu]))
+            visited.add(komsu)
+            if len(graph[komsu]) == 1:
+                list2.append(list1)
+                return
+            else:
+                for komsu2 in graph[komsu]:
+                    if str(komsu2) != author and komsu2 not in visited:
+                        list1.append(komsu2)
+                        new_list = list1.copy()
+                        if len(graph[komsu2]) == 1:
+                            # print(list1)
+                            list2.append(new_list)
+                            list1.remove(komsu2)
+                            continue
+                        else:
+                            fonk1(komsu2, list1, author, list2)
+
+        for komsu in graph[author]:
+            list1.append(author)
+            list1.append(komsu)
+            fonk1(komsu, list1, author_id, list2)
+            list1 = []
+
+        list3 = max(list2, key=len).copy()
+
+        return (content_style_1,"",content_style_2,"",content_style_3, "",content_style_4, "",content_style_5, "", content_style_6,content_style_7,', '.join(list3),
+                {'display': 'none'},{'display': 'none'}, {'display': 'none'},{'display': 'none'},{'display': 'none'},{'display': 'block'},
+                store_btn_1,store_btn_2,store_btn_3,store_btn_4,store_btn_5, store_btn_6, store_btn_7,store_btn_6,"",go.Figure(),style_hidden)
+
+    return (style_hidden,"",style_hidden,"",style_hidden, "",style_hidden, "",style_hidden, "", style_hidden, style_hidden, "",{'display': 'none'},{'display': 'none'}, {'display': 'none'},{'display': 'none'},{'display': 'none'},{'display': 'none'},
+            store_btn_1,store_btn_2,store_btn_3,store_btn_4,store_btn_5, store_btn_6, store_btn_7,store_btn_6,"",go.Figure(),style_hidden)
+
+if __name__ == '__main__':
+    app.run_server(debug=True)
